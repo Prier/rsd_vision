@@ -1,0 +1,22 @@
+<!-- ISA launch file -->
+
+<launch>
+ 	<!-- Running the gscam node -->
+	<node 
+		pkg = "gscam" type="gscam" name ="gscam" output="screen">
+ 	</node>
+
+	<!-- Running the legoDetection node -->
+	 <node 
+		pkg = "rsd_project" type="legoDetection" name ="legoDetection" output="screen">
+ 	</node>
+
+	<!-- Running the listener_nodeRSD -->
+	<!--	
+	<node 
+		pkg = "rsd_project" type="listener_nodeRSD" name ="listener_nodeRSD" output="screen">
+ 	</node>
+	-->
+
+</launch>
+
