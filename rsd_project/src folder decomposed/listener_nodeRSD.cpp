@@ -15,9 +15,9 @@ void brickPoseCallBack(const rsd_project::bricks_to_robot::ConstPtr& msg)
 //void brickPoseCallBack(const rsd_project::bricks_to_robot& header)
 {
     // Receive the pose
-    geometry_msgs::Pose pose;
-    pose = msg-> pose;
-    cout << "\n------------------ Brick received ------------------\n" << pose << "\n";
+    //geometry_msgs::Pose pose;
+    //pose = msg-> pose;
+    //cout << "\n------------------ Brick received ------------------\n" << pose << "\n";
 
     // Receive the timestamp
     double receiveTime;
