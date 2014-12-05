@@ -17,7 +17,11 @@
 #include <tf/transform_listener.h>
 
 //Our self define msg file
-#include <rsd_project/bricks_to_robot.h>
+#include <rsd_vision/bricks_to_robot.h>
+
+#define projectName rsd_vision
+
+
 
 using namespace cv;
 using namespace std;
@@ -129,7 +133,7 @@ class ImageConverter
 
    */
 
-    rsd_project::bricks_to_robot bricks_msg;
+    projectName::bricks_to_robot bricks_msg;
     ros::Publisher p_pub;
 
 	public:
@@ -509,7 +513,7 @@ class ImageConverter
 		
 		// Here I added the publisher so we can publish the lego pse
         //p_pub = nh_.advertise<geometry_msgs::Pose>("lego_pose", 1);
-        p_pub = nh_.advertise<rsd_project::bricks_to_robot>("lego_pose", 1);
+        p_pub = nh_.advertise<projectName::bricks_to_robot>("lego_pose", 1);
         ros::Rate rate(publish_frequency);
 		geometry_msgs::Pose pose;
 		tf::Quaternion q;
@@ -1077,7 +1081,7 @@ class ImageConverter
         // any images...
         //cout << "----------------------------------------------------------" << endl;
         //cout << "\n" << endl;
-        waitKey(1);git
+        waitKey(1);
     }
 
 };

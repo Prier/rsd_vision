@@ -1,7 +1,9 @@
 #include "ros/ros.h"
-#include <rsd_project/bricks_to_robot.h>   	// Added to include my custum msg file,bricks_to_robo.msg
-#include <geometry_msgs/Pose.h>
+#include <rsd_vision/bricks_to_robot.h>   	// Added to include my custum msg file,bricks_to_robo.msg
 
+#define projectName rsd_vision
+
+#include <geometry_msgs/Pose.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
@@ -11,7 +13,7 @@ using namespace std;
 using namespace cv;
 
 // The r_and_theta callback function
-void brickPoseCallBack(const rsd_project::bricks_to_robot::ConstPtr& msg)
+void brickPoseCallBack(const projectName::bricks_to_robot::ConstPtr& msg)
 //void brickPoseCallBack(const rsd_project::bricks_to_robot& header)
 {
     // Receive the pose
@@ -19,22 +21,49 @@ void brickPoseCallBack(const rsd_project::bricks_to_robot::ConstPtr& msg)
     //pose = msg-> pose;
     //cout << "\n------------------ Brick received ------------------\n" << pose << "\n";
 
-    // Receive the timestamp
-    double receiveTime;
-    receiveTime = msg->header.stamp.toSec();
+    // Receive the x,y,z,roll,pitch and yaw
+    double x,y,z,roll,pitch,yaw;
+    x = msg->       x;
+    y = msg->       y;
+    z = msg->       z;
+    roll = msg->    roll;
+    pitch = msg->   pitch;
+    yaw = msg->     yaw;
+
+    cout << "x: "       << x        << endl;
+    cout << "y: "       << y        << endl;
+    cout << "z: "       << z        << endl;
+    cout << "roll: "    << roll     << endl;
+    cout << "pitch: "   << pitch    << endl;
+    cout << "yaw: "     << yaw      << endl;
+
+
+    // Receive the speed
+    double speed;
+    speed = msg->speed;
+    cout << "Speed: " << speed << endl;
 
     // Receive the ID
     string color;
     color = msg->header.frame_id;
     cout << "Color: " << color << endl;
 
-    // Calculate the differnce in time from send to received
-    double currentTime = ros::Time::now().toSec();
-    double offset;
-    offset = currentTime-receiveTime;
+    // Receive the timestamp
+    double timeStamp;
+    timeStamp = msg->header.stamp.toSec();
     cout << setprecision(15);
-    cout <<"offset from stamped in legoDetection to be accessable in listener_nodeRSD: " << receiveTime << endl;
+    cout << "Time stamp: " << timeStamp << endl;
 
+    // Get the current time
+    double currentTime = ros::Time::now().toSec();
+    cout << setprecision(15);
+    cout << "Current time: " << currentTime << endl;
+
+    // Calculate the differnce in time from send to received
+    double offset;
+    offset = currentTime-timeStamp;
+    cout << setprecision(15);
+    cout <<"Time offset: " << offset << endl;
 	
     //ros::NodeHandle n;
 	// Publisher cmd_velo
@@ -56,23 +85,7 @@ int main(int argc, char **argv)
     //ros::Publisher cmd_vel_pub = n.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
 
 	while (ros::ok())
-	{
-		// Publish the r and theta trough ROS
-//		twist.linear.x = 0.2;
-//		twist.linear.y = 0.0;
-//		twist.linear.z = 0.0;
-//		
-//		twist.angular.x = 0.0;
-//		twist.angular.y = 0.0;
-//		twist.angular.z = 0.0;
-		
-		//cout << "Do we come to this point?" << endl;
-		//msg.number = 23;
-		//test_pub.publish(msg);
-		
-		// And then we send it on the test_pub topic
-		//cmd_vel_pub.publish(twist);
-		
+	{	
         //loop_rate.sleep();
 		ros::spinOnce();
 	}	
