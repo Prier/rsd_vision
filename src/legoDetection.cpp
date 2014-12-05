@@ -836,8 +836,8 @@ class ImageConverter
             // Draw the centerpoint in the image
             double x,y,initialZ ,roll,pitch,yaw;
             initialZ = 0.25;                     // Tested to fid best for x,y 24/11-2014.This z value for getting the x and y
-            roll = 0.0;                   // Roll is negligible depending on the u value in the image.
-            pitch = 17.03;
+            roll = 17.03;                   // Roll is negligible depending on the u value in the image.
+            pitch = 0.0;
 
             double alignmentOffset = 0.007;       // Approximately 1-0.5 cm offset of alignment when compairing origo to the centerpoint of the conveyor belt.
             double fx = 1194.773485/resizeScale; // Info extracted from /camera/camera_info topic with ROS. Use rostopic echo /camera/camera_info
