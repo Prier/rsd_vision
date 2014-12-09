@@ -32,7 +32,8 @@ using namespace std;
 //#define xy_hys 10 // Works for 12Hz of the belt
 //Below thease individual hysterese for x and y works at 20Hz of the belt.
 #define x_hys 10
-#define y_hys 20
+#define y_hysP 20
+#define y_hysM 50
 
 #define maxMorph 20
 
@@ -385,7 +386,7 @@ class ImageConverter
             for (uint j = 0; j < alreadySend.size(); j++)
             {
                 //cout << "TempCenter is: " << tempCenter << endl;
-                if ((tempCenter.x <= alreadySend[j].x + x_hys) && (tempCenter.x >= alreadySend[j].x - x_hys) && (tempCenter.y <= alreadySend[j].y + y_hys) && (tempCenter.y >= alreadySend[j].y - y_hys) )
+                if ((tempCenter.x <= alreadySend[j].x + x_hys) && (tempCenter.x >= alreadySend[j].x - x_hys) && (tempCenter.y <= alreadySend[j].y + y_hysP) && (tempCenter.y >= alreadySend[j].y - y_hysM) )
                 {
                     //cout << "TempCenter is the same" << endl;
                     alreadySend[j].x = tempCenter.x;
