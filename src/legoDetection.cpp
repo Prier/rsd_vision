@@ -660,8 +660,6 @@ class ImageConverter
 		leftLowerPoint.y = top;
 		rightLowerPoint.x = img_cropped.cols;
 		rightLowerPoint.y = leftLowerPoint.y;
-		
-        cout << "hej" << endl;
 
 		leftUpperPoint.x = 0;
 		leftUpperPoint.y = bund;
