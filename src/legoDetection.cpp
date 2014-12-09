@@ -1,3 +1,5 @@
+// THIS IS THE FINAL CODE
+
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
@@ -9,6 +11,7 @@
 #include <opencv2/core/core.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <vector>
 
@@ -17,7 +20,11 @@
 #include <tf/transform_listener.h>
 
 //Our self define msg file
-#include <rsd_project/bricks_to_robot.h>
+#include <rsd_vision/bricks_to_robot.h>
+
+#define projectName rsd_vision
+
+
 
 using namespace cv;
 using namespace std;
@@ -100,6 +107,7 @@ bool bricksFlag = true;
 ///////////////////////////////////////////////////////////
 class ImageConverter
 {
+
 	ros::NodeHandle nh_;
     image_transport::ImageTransport it_;
 	image_transport::Subscriber image_sub_;
@@ -129,7 +137,7 @@ class ImageConverter
 
    */
 
-    rsd_project::bricks_to_robot bricks_msg;
+    projectName::bricks_to_robot bricks_msg;
     ros::Publisher p_pub;
 
 	public:
@@ -251,6 +259,7 @@ class ImageConverter
         Point2d tempCenter;
         double tempAngle;
         double tempHeight;
+        double tempWidth;
         bool alreadySendBool;
         vector<Point2d> showCenterXY_red;
 
@@ -265,6 +274,7 @@ class ImageConverter
             // Using the minAreaRect function to gain the width, height, center coordinate and area.
             minRect[i] = minAreaRect( Mat(contours[i]) );
 
+
             // Now we ignore if two same colored LEGO bricks is touching each other
             // Because if this is true, the area is much bigger and we have setted the
             // maximum Area.
@@ -274,6 +284,7 @@ class ImageConverter
             if(minRect[i].size.height > minRect[i].size.width)
             {
                 tempHeight = minRect[i].size.height;
+                tempWidth = minRect[i].size.width;
                 //cout << "The heigh of the brick is: " << minRect[i].size.height << endl;
                 //ratio = double(minRect[i].size.height)/double(minRect[i].size.width);
                 //cout << "The ratio height/width is: " << ratio << endl;
@@ -282,10 +293,19 @@ class ImageConverter
             else
             {
                 tempHeight = minRect[i].size.width;
+                tempWidth = minRect[i].size.height;
                 //cout << "The heigh of the brick is: " << minRect[i].size.width << endl;
             }
 
-            // Only look for ratio that is between minRatio and maxRatio
+            //cout << "The tempHeigh is:" << tempHeight << endl;
+
+            // Only look for height that is between minHeihgt and maxHeight
+            // Reason for only loook for height, and not use the width/height ratio is
+            // because if e.g the red brick is lying on the side, the ratio width/height for red range also finds
+            // blue normal placed bricks.
+
+            //cout << tempHeight << endl;
+
             if((tempHeight < minHeight) || tempHeight > maxHeight)
             {
                 continue;
@@ -294,6 +314,8 @@ class ImageConverter
             // Now get the center and angle
             tempCenter = minRect[i].center;
             tempAngle = minRect[i].angle;
+
+           // cout << "OpenCV angle is: " << tempAngle << endl;
 
             // Where the center can be converted with the pin hole model
             //cout << "The u is " << tempCenter.x << " and the v is " << tempCenter.y << endl;
@@ -311,10 +333,36 @@ class ImageConverter
 
             //cout << "x is " << GetXY(tempCenter.x,  << " and the v is " << tempCenter.y << endl;
 
+            /*
             if (tempAngle == -0)
             {
                 tempAngle = 0;
             }
+            //*/
+
+            if ( (floor(minRect[i].size.height + 0.5)) < (floor(minRect[i].size.width + 0.5)) )
+            {
+                tempAngle = tempAngle + 180;
+            }
+            else
+            {
+                tempAngle = tempAngle + 90;
+            }
+
+//            // THis is Christian'S code... Perhaps also a little WTF...
+
+//            if ( (floor(tempHeight + 0.5)) < (floor(tempWidth + 0.5)) and tempAngle != 0 )
+//            {
+//                tempAngle = tempAngle + 180;
+//            }
+//            else if ((floor(tempHeight + 0.5)) > (floor(tempWidth + 0.5)) or tempAngle != 0)
+//            {
+//                tempAngle = tempAngle + 90;
+//            }
+
+      //       WTF is this??? ;)
+
+/*
 
             if ( (floor(minRect[i].size.height + 0.5)) < (floor(minRect[i].size.width + 0.5)) and tempAngle != 0 )
             {
@@ -328,7 +376,10 @@ class ImageConverter
             if ( degrees == false )
             {
                 tempAngle = tempAngle * (M_PI/180);
+
             }
+//*/
+ //           cout << "Angle is: \t" << tempAngle << endl;
 
             alreadySendBool = false;
             for (uint j = 0; j < alreadySend.size(); j++)
@@ -343,7 +394,7 @@ class ImageConverter
                     //cout << "alreadySend contains: " << alreadySend << "with size: " << alreadySend.size() << endl;
                     if ((tempCenter.y < lowerLine) or (tempCenter.y > upperLine))
                     {
-                        cout << "Now we are above or below the green lines with size: " << alreadySend.size() << endl;
+                        //cout << "Now we are above or below the green lines with alreadySend vector size of: " << alreadySend.size() << endl;
                         alreadySend.erase(alreadySend.begin() + j);
                         //cout << "alreadySend is less now and contains: " << alreadySend << endl;
                     }
@@ -394,13 +445,13 @@ class ImageConverter
         double offsetZ = 0;
         double finalZ = 0;
 
-        cout << "x is this in meters, when entering the function: " << x << endl;
-        cout << "and the alignOffset is: " << alignOffset << endl;
+        //cout << "x is this in meters, when entering the function: " << x << endl;
+        //cout << "and the alignOffset is: " << alignOffset << endl;
 
         // Take care of the alignment offset, by moving the legoBrick in x space a little bit to the left.
         //x += alignOffset;
 
-        cout << "x is this in meters, when the offset has been subtracted: " << x << endl;
+        //cout << "x is this in meters, when the offset has been subtracted: " << x << endl;
 
         // If x is positive, then we are in the origo + right side of the image.
         if (x>=0)
@@ -430,7 +481,7 @@ class ImageConverter
         {
             finalZ = initialZ - offsetZ;
         }
-        cout << "z is finally: " << finalZ << endl;
+        //cout << "z is finally: " << finalZ << endl;
         return finalZ;
 	}
 
@@ -468,7 +519,7 @@ class ImageConverter
 		
 		// Here I added the publisher so we can publish the lego pse
         //p_pub = nh_.advertise<geometry_msgs::Pose>("lego_pose", 1);
-        p_pub = nh_.advertise<rsd_project::bricks_to_robot>("lego_pose", 1);
+        p_pub = nh_.advertise<projectName::bricks_to_robot>("lego_pose", 1);
         ros::Rate rate(publish_frequency);
 		geometry_msgs::Pose pose;
 		tf::Quaternion q;
@@ -490,7 +541,7 @@ class ImageConverter
 		
         // Create a ROI since the
 		Mat img_cropped;
-		int roi_x = 110;   
+        int roi_x = 110;
 		int roi_y = 0;
 		int roi_width = inputImage.cols-(2*roi_x);
 		//int roi_height = inputImage.rows - (2*roi_y);
@@ -544,9 +595,16 @@ class ImageConverter
         Mat img_blue_neg;
         img_blue_neg = 255 - img_blue;
 
+        //imshow("Pure img_blue_neg", img_blue_neg);
+        //img_seg_blue = img_blue_neg - img_yellow;
+        //imshow("Pure img_seg_blue", img_seg_blue);
+
         // And the final image is:
         Mat img_seg;
         img_seg = img_yellow + img_blue_neg;
+        //imshow("Pure img_yellow", img_yellow);
+        //imshow("Pure img_seg", img_seg);
+
 
         // Here we can see, that all the bricks is founded in the img_seg.
         // Now we need to do some morph to remove small noise pixels etc...
@@ -556,12 +614,12 @@ class ImageConverter
         // Note: Since the total segmentated image, img_seg is much nicer now there is really no noise pixel.
         // However the blue brick still suffer from small holes and therefore we close thoese holes by
         // use som Closing. Not Opening. Opening was more nicer to use, if we wanted to get rid of small noise pixels.
-        Mat img_morph;
-        createTrackbar("Erode", "Final image after morph", &erode_iterations, maxMorph);
-        createTrackbar("Dilate", "Final image after morph", &dilate_iterations, maxMorph);
-        img_morph = Closing(img_seg, erode_iterations, dilate_iterations);
+//        Mat img_morph;
+//        createTrackbar("Erode", "Final image after morph", &erode_iterations, maxMorph);
+//        createTrackbar("Dilate", "Final image after morph", &dilate_iterations, maxMorph);
+//        img_morph = Closing(img_seg_red_yellow, erode_iterations, dilate_iterations);
 
-        imshow("Final image after morph", img_morph);
+        //imshow("Final image after morph", img_morph);
 
         // Do segmentation
         vector< vector <Point> > contours;
@@ -603,6 +661,8 @@ class ImageConverter
 		rightLowerPoint.x = img_cropped.cols;
 		rightLowerPoint.y = leftLowerPoint.y;
 		
+        cout << "hej" << endl;
+
 		leftUpperPoint.x = 0;
 		leftUpperPoint.y = bund;
 		rightUpperPoint.x = img_cropped.cols;
@@ -612,9 +672,9 @@ class ImageConverter
 		// If two LEGO bricks is touching each other, then the area is of course larger
 		// This is at the moment not talking into account...
 		
-        findCenterAndAngle(contours, center_red,    showCenter_red,     angle_red,      showAngle_red,      height_red,     showHeight_red,     true, leftLowerPoint.y, leftUpperPoint.y, 70, 80);
-        findCenterAndAngle(contours, center_yellow, showCenter_yellow,  angle_yellow,   showAngle_yellow,   height_yellow,  showHeight_yellow,  true, leftLowerPoint.y, leftUpperPoint.y, 100, 120);
-        findCenterAndAngle(contours, center_blue,   showCenter_blue,    angle_blue,     showAngle_blue,     height_blue,    showHeight_blue,    true, leftLowerPoint.y, leftUpperPoint.y, 30, 45);
+        findCenterAndAngle(contours, center_red,    showCenter_red,     angle_red,      showAngle_red,      height_red,     showHeight_red,     true, leftLowerPoint.y, leftUpperPoint.y, 65, 100);
+        findCenterAndAngle(contours, center_yellow, showCenter_yellow,  angle_yellow,   showAngle_yellow,   height_yellow,  showHeight_yellow,  true, leftLowerPoint.y, leftUpperPoint.y, 105, 140);
+        findCenterAndAngle(contours, center_blue,   showCenter_blue,    angle_blue,     showAngle_blue,     height_blue,    showHeight_blue,    true, leftLowerPoint.y, leftUpperPoint.y, 30, 60);
 
 //        findCenterAndAngle(contours, center_red, angle_red, area_red, true, leftLowerPoint.y, leftUpperPoint.y, 1601, 3500);
 //        findCenterAndAngle(contours, center_yellow, angle_yellow, area_yellow, true, leftLowerPoint.y, leftUpperPoint.y, 3501, 5000);
@@ -771,7 +831,7 @@ class ImageConverter
 
         if((redBricks == 0) && (yellowBricks == 0) && (blueBricks == 0) && (bricksFlag == true))
         {         
-            cout << "Nothing has been changed in the brick situation..." << endl;
+            //cout << "Nothing has been changed in the brick situation..." << endl;
             bricksFlag = false;
         }
 
@@ -781,8 +841,8 @@ class ImageConverter
             // Draw the centerpoint in the image
             double x,y,initialZ ,roll,pitch,yaw;
             initialZ = 0.25;                     // Tested to fid best for x,y 24/11-2014.This z value for getting the x and y
-            roll = 0.0;                   // Roll is negligible depending on the u value in the image.
-            pitch = 17.03;
+            roll = 17.03;                   // Roll is negligible depending on the u value in the image.
+            pitch = 0.0;
 
             double alignmentOffset = 0.007;       // Approximately 1-0.5 cm offset of alignment when compairing origo to the centerpoint of the conveyor belt.
             double fx = 1194.773485/resizeScale; // Info extracted from /camera/camera_info topic with ROS. Use rostopic echo /camera/camera_info
@@ -790,6 +850,7 @@ class ImageConverter
 
             // Send the constant speed
             bricks_msg.speed = 7.0901871809;    // @10Hz
+
 //            bricks_msg.speed = 9.9285146942;    // @12.5Hz
 //            bricks_msg.speed = 12.3395853899;   // @15Hz
 
@@ -802,10 +863,16 @@ class ImageConverter
                     x = GetXY(center_red[i].x, initialZ, fx, img_cropped.cols)+alignmentOffset;
                     y = GetXY(center_red[i].y, initialZ, fy, img_cropped.rows);
 
+                    //cout << "The angle for red brick is: " << angle_red[i] << endl;
+
                     // Set the position.
                     // Multiply with 100 to go from meter to get to cm. The white dot in the image is origo, (0,0)
-                    pose.position.x = 100*x;
-                    pose.position.y = 100*y;
+                    //pose.position.x = 100*x;
+                    //pose.position.y = 100*y;
+
+                    // Here we send just x,y as float64 in the msg file.
+                    bricks_msg.x = x;
+                    bricks_msg.y = y;
 
                     /* Note about the z-value
                       When looking at the data, which was remeassured, vally of the conveyorbelt is between
@@ -822,35 +889,28 @@ class ImageConverter
                     */
 
                     // Multiply with 100 to get from meters to cm.
-                    pose.position.z = 100*GetZValue(x, initialZ, alignmentOffset);
-                    cout << "The real z-position is: " << pose.position.z << endl;
-                    cout << "The x,y,z is ("
-                         << pose.position.x
-                         << " , "
-                         << pose.position.y
-                         << " , "
-                         << pose.position.z
-                         << ") "
-                         << endl;
+                    //pose.position.z = 100*GetZValue(x, initialZ, alignmentOffset);
+
+                    // Here we just send the z value as float64 in the msg file
+                    bricks_msg.z = GetZValue(x, initialZ, alignmentOffset);
 
                     // Set the yaw compaired to the orientation founded...
                     yaw = angle_red[i];
 
                     // Set the orientation
-                    q.setRPY(roll, pitch, yaw);
-                    pose.orientation.x = q.getX();
-                    pose.orientation.y = q.getY();
-                    pose.orientation.z = q.getZ();
-                    pose.orientation.w = q.getW();
+                    //q.setRPY(roll, pitch, yaw);
+                    //pose.orientation.x = q.getX();
+                    //pose.orientation.y = q.getY();
+                    //pose.orientation.z = q.getZ();
+                    //pose.orientation.w = q.getW();
 
-                    // Code where we just wrote directly the roll, pitch and yaw into the orentation without w.
-//                    pose.orientation.x = roll;
-//                    pose.orientation.y = pitch;   // Pitch is the inclination of the conveyor belt. This is static. Unit is in degree.
-//                    pose.orientation.z = angle_red[i]; // Yaw is the rotation of the bricks when lying on the conveyorbelt.
-
+                    // Here we just just the roll, pitch and yaw as float64 in the msg file
+                    bricks_msg.roll = roll;
+                    bricks_msg.pitch = pitch;
+                    bricks_msg.yaw = yaw;
 
                     // Set the pose into the bricks_msg
-                    bricks_msg.pose = pose;
+                    //bricks_msg.pose = pose;
 
                     // Set the time into bricks_msg
                     bricks_msg.header.stamp = tid;
@@ -865,7 +925,7 @@ class ImageConverter
                     // Then we keep track of what we have sent...
                     alreadySend.push_back(center_red[i]);
 
-                    cout << "------------------ Next brick ------------------ \n" << bricks_msg << endl;
+                    //cout << "------------------ Next brick ------------------ \n" << bricks_msg << endl;
                 }
             }
 
@@ -880,8 +940,14 @@ class ImageConverter
 
                     // Set the position.
                     // Multiply with 100 to go from meter to get to cm. The white dot in the image is origo, (0,0)
-                    pose.position.x = 100*x;
-                    pose.position.y = 100*y;
+                    //pose.position.x = 100*x;
+                    //pose.position.y = 100*y;
+
+                    // Here we send just x,y as float64 in the msg file.
+                    bricks_msg.x = x;
+                    bricks_msg.y = y;
+
+                    //cout << "The angle for yellow brick is: " << angle_yellow[i] << endl;
 
                     /* Note about the z-value
                       When looking at the data, which was remeassured, vally of the conveyorbelt is between
@@ -898,34 +964,28 @@ class ImageConverter
                     */
 
                     // Multiply with 100 to get from meters to cm.
-                    pose.position.z = 100*GetZValue(x, initialZ, alignmentOffset);
-                    cout << "The real z-position is: " << pose.position.z << endl;
-                    cout << "The x,y,z is ("
-                         << pose.position.x
-                         << " , "
-                         << pose.position.y
-                         << " , "
-                         << pose.position.z
-                         << ") "
-                         << endl;
+                    //pose.position.z = 100*GetZValue(x, initialZ, alignmentOffset);
+
+                    // Here we just send the z value as float64 in the msg file
+                    bricks_msg.z = GetZValue(x, initialZ, alignmentOffset);
 
                     // Set the yaw compaired to the orientation founded...
                     yaw = angle_yellow[i];
 
                     // Set the orientation
-                    q.setRPY(roll, pitch, yaw);
-                    pose.orientation.x = q.getX();
-                    pose.orientation.y = q.getY();
-                    pose.orientation.z = q.getZ();
-                    pose.orientation.w = q.getW();
-
-                    // Code where we just wrote directly the roll, pitch and yaw into the orentation without w.
-//                    pose.orientation.x = roll;
-//                    pose.orientation.y = pitch;   // Pitch is the inclination of the conveyor belt. This is static. Unit is in degree.
-//                    pose.orientation.z = angle_yellow[i]; // Yaw is the rotation of the bricks when lying on the conveyorbelt.
+//                    q.setRPY(roll, pitch, yaw);
+//                    pose.orientation.x = q.getX();
+//                    pose.orientation.y = q.getY();
+//                    pose.orientation.z = q.getZ();
+//                    pose.orientation.w = q.getW();
 
                     // Set the pose into the bricks_msg
-                    bricks_msg.pose = pose;
+                    // bricks_msg.pose = pose;
+
+                    // Here we just just the roll, pitch and yaw as float64 in the msg file
+                    bricks_msg.roll = roll;
+                    bricks_msg.pitch = pitch;
+                    bricks_msg.yaw = yaw;
 
                     // Set the time into bricks_msg
                     bricks_msg.header.stamp = tid;
@@ -941,7 +1001,7 @@ class ImageConverter
                     // Then we keep track of what we have sent...
                     alreadySend.push_back(center_yellow[i]);
 
-                    cout << "------------------ Next brick ------------------ \n" << bricks_msg << endl;
+                    //cout << "------------------ Next brick ------------------ \n" << bricks_msg << endl;
                 }
             }
 
@@ -956,8 +1016,14 @@ class ImageConverter
 
                     // Set the position.
                     // Multiply with 100 to go from meter to get to cm. The white dot in the image is origo, (0,0)
-                    pose.position.x = 100*x;
-                    pose.position.y = 100*y;
+                    //pose.position.x = 100*x;
+                    //pose.position.y = 100*y;
+
+                    // Here we send just x,y as float64 in the msg file.
+                    bricks_msg.x = x;
+                    bricks_msg.y = y;
+
+                    //cout << "The angle for blue brick is: " << angle_blue[i] << endl;
 
                     /* Note about the z-value
                       When looking at the data, which was remeassured, vally of the conveyorbelt is between
@@ -974,34 +1040,28 @@ class ImageConverter
                     */
 
                     // Multiply with 100 to get from meters to cm.
-                    pose.position.z = 100*GetZValue(x, initialZ, alignmentOffset);
-                    cout << "The real z-position is: " << pose.position.z << endl;
-                    cout << "The x,y,z is ("
-                         << pose.position.x
-                         << " , "
-                         << pose.position.y
-                         << " , "
-                         << pose.position.z
-                         << ") "
-                         << endl;
+                    //pose.position.z = 100*GetZValue(x, initialZ, alignmentOffset);
+
+                    // Here we just send the z value as float64 in the msg file
+                    bricks_msg.z = GetZValue(x, initialZ, alignmentOffset);
 
                     // Set the yaw compaired to the orientation founded...
                     yaw = angle_blue[i];
 
                     // Set the orientation
-                    q.setRPY(roll, pitch, yaw);
-                    pose.orientation.x = q.getX();
-                    pose.orientation.y = q.getY();
-                    pose.orientation.z = q.getZ();
-                    pose.orientation.w = q.getW();
+//                    q.setRPY(roll, pitch, yaw);
+//                    pose.orientation.x = q.getX();
+//                    pose.orientation.y = q.getY();
+//                    pose.orientation.z = q.getZ();
+//                    pose.orientation.w = q.getW();
 
-                    // Code where we just wrote directly the roll, pitch and yaw into the orentation without w.
-//                  pose.orientation.x = roll;
-//                  pose.orientation.y = pitch;   // Pitch is the inclination of the conveyor belt. This is static. Unit is in degree.
-////                pose.orientation.z = angle_blue[i]; // Yaw is the rotation of the bricks when lying on the conveyorbelt.
+                    // Here we just just the roll, pitch and yaw as float64 in the msg file
+                    bricks_msg.roll = roll;
+                    bricks_msg.pitch = pitch;
+                    bricks_msg.yaw = yaw;
 
                     // Set the pose into the bricks_msg
-                    bricks_msg.pose = pose;
+                    //bricks_msg.pose = pose;
 
                     // Set the time into bricks_msg
                     bricks_msg.header.stamp = tid;
@@ -1017,7 +1077,7 @@ class ImageConverter
                     alreadySend.push_back(center_blue[i]);
 
 
-                    cout << "------------------ Next brick ------------------ \n" << bricks_msg << endl;
+                    //cout << "------------------ Next brick ------------------ \n" << bricks_msg << endl;
                 }
                 //cout << "vector of poses size is: " << poses.size() << endl;
             }
