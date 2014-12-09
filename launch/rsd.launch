@@ -8,7 +8,7 @@
 
 	<!-- Running the legoDetection node -->
 	 <node 
-		pkg = "rsd_vision" type="legoDetection" name ="legoDetection" output="screen">
+		pkg = "rsd_project" type="legoDetection" name ="legoDetection" output="screen">
  	</node>
 
 	<!-- Running the listener_nodeRSD -->
