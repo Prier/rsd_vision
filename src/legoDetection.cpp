@@ -21,6 +21,7 @@
 
 //Our self define msg file
 #include <rsd_vision/bricks_to_robot.h>
+#include <rsd_vision/conveyor_speed.h>
 
 #define projectName rsd_vision
 #define visualize true
@@ -31,8 +32,8 @@ using namespace std;
 //#define xy_hys 10 // Works for 12Hz of the belt
 //Below thease individual hysterese for x and y works at 20Hz of the belt.
 #define x_hys 10
-#define y_hysP 20
-#define y_hysM 50
+#define y_hysP 10
+#define y_hysM 20 //20 at 10 fps
 
 #define maxMorph 20
 
@@ -49,6 +50,14 @@ using namespace std;
 #define YELLOW_MAX_HEIGHT 140
 
 #define MAX_WIDTH          60
+
+///////////////////////////////////////////////////////////
+// Defines for the pin hole model and
+///////////////////////////////////////////////////////////
+#define resizeScale 2
+#define focalLengthX 1194.773485/resizeScale
+#define focalLengthY 1192.665666/resizeScale
+#define initialZ 0.25
 
 ///////////////////////////////////////////////////////////
 // Global variables
@@ -105,6 +114,15 @@ int dilate_iterations = 0;
 double publish_frequency = 2;
 vector<Point2d> alreadySend;
 
+
+Point2d oldCenter = Point2d(0,0);
+double oldTime;
+vector < double> medianSpeed;
+uint imgCounter = 0;
+
+//bricks_msg.speed = 7.0901871809;    // @10Hz
+//double speedSend = 7.0901871809;
+
 int redBricks = 0;
 int yellowBricks = 0;
 int blueBricks = 0;
@@ -132,7 +150,9 @@ class ImageConverter
     image_transport::Publisher image_pub_;
 
     projectName::bricks_to_robot bricks_msg;
+    projectName::conveyor_speed speed_msg;
     ros::Publisher p_pub;
+    ros::Publisher p_pub_speed;
 
     public:
     ImageConverter():it_(nh_)
@@ -157,23 +177,20 @@ class ImageConverter
 
     void imageProcessing()
     {
-        // Here I added the publisher so we can publish the lego pse
-        //p_pub = nh_.advertise<geometry_msgs::Pose>("lego_pose", 1);
-        p_pub = nh_.advertise<projectName::bricks_to_robot>("lego_pose", 1);
-        ros::Rate rate(publish_frequency);
-
         // Here the time is initialized...
         ros::Time tid;
         tid = ros::Time::now();
 
-        // Resize scale
-        int resizeScale = 2;
+        // Here I added the publisher so we can publish the lego pse
+        //p_pub = nh_.advertise<geometry_msgs::Pose>("lego_pose", 1);
+        p_pub = nh_.advertise<projectName::bricks_to_robot>("lego_pose", 1);;
+        p_pub_speed = nh_.advertise<projectName::conveyor_speed>("conveyor_speed", 1);
+
+        ros::Rate rate(publish_frequency);
 
         // Resize the image
         Size size(inputImage.cols/resizeScale,inputImage.rows/resizeScale);//the dst image size,e.g.100x100
         resize(inputImage,inputImage,size);//resize image
-
-
 
         // Create a ROI since the
         Mat img_cropped;
@@ -285,26 +302,20 @@ class ImageConverter
         findCenterAndAngle(contours, sendBrick, showBrick, true, leftLowerPoint.y, leftUpperPoint.y);
 
         // Draw the centerpoint in the image
-        double x,y,initialZ ,roll,pitch,yaw;
-        initialZ = 0.25;                     // Tested to fid best for x,y 24/11-2014.This z value for getting the x and y
+        double x,y,roll,pitch,yaw;
+        //initialZ = 0.25;                     // Tested to fid best for x,y 24/11-2014.This z value for getting the x and y
         roll = 17.03;                   // Roll is negligible depending on the u value in the image.
         pitch = 0.0;
 
         double alignmentOffset = 0.007;       // Approximately 1-0.5 cm offset of alignment when compairing origo to the centerpoint of the conveyor belt.
-        double fx = 1194.773485/resizeScale; // Info extracted from /camera/camera_info topic with ROS. Use rostopic echo /camera/camera_info
-        double fy = 1192.665666/resizeScale; // Info extracted from /camera/camera_info topic with ROS. Use rostopic echo /camera/camera_info
-
-        // Send the constant speed
-        bricks_msg.speed = 7.0901871809;    // @10Hz
-
-//            bricks_msg.speed = 9.9285146942;    // @12.5Hz
-//            bricks_msg.speed = 12.3395853899;   // @15Hz
+        //double fx = 1194.773485/resizeScale; // Info extracted from /camera/camera_info topic with ROS. Use rostopic echo /camera/camera_info
+        //double fy = 1192.665666/resizeScale; // Info extracted from /camera/camera_info topic with ROS. Use rostopic echo /camera/camera_info
 
         for (int i = 0; i < sendBrick.size(); i++)
         {
             // Set the x and y using the Pin hole model
-            x = GetXY(sendBrick[i].center.x, initialZ, fx, img_cropped.cols)+alignmentOffset;
-            y = GetXY(sendBrick[i].center.y, initialZ, fy, img_cropped.rows);
+            x = GetXY(sendBrick[i].center.x, initialZ, focalLengthX, img_cropped.cols)+alignmentOffset;
+            y = GetXY(sendBrick[i].center.y, initialZ, focalLengthY, img_cropped.rows);
 
             //cout << "The angle for red brick is: " << angle_red[i] << endl;
 
@@ -349,12 +360,18 @@ class ImageConverter
             // Here we publish on the ROS topic, the pose.
             // Then we keep track of what we have sent...
             alreadySend.push_back(sendBrick[i].center);
+
         }
+
+        // Send the speed on the topic /speed
+
+        getSpeed(contours, img_cropped.cols, tid.toSec(), leftLowerPoint.y, leftUpperPoint.y);
+
 
         if (visualize)
         {
             for (int i = 0; i < showBrick.size(); i++)
-            {
+            { 
                 if(showBrick[i].color == BLUE_BRICK)
                     circle(img_cropped, showBrick[i].center, 5, Scalar(255, 0, 0), -1, 8, 0);
                 else if (showBrick[i].color == RED_BRICK)
@@ -367,6 +384,8 @@ class ImageConverter
                 putText(img_cropped, doubleToString("Angle  : ", showBrick[i].angle),     Point(showBrick[i].center.x, showBrick[i].center.y), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 255, 255), 1, 8, false);
                 putText(img_cropped, doubleToString("Height : ", showBrick[i].height),    Point(showBrick[i].center.x, showBrick[i].center.y + 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 255, 255), 1, 8, false);
             }
+
+
 
             // Drawings stuff on the output RGB image
             line(img_cropped, leftLowerPoint, rightLowerPoint, Scalar(0, 255, 0), 2, 8, 0);
@@ -385,6 +404,88 @@ class ImageConverter
             // Add this little wait for 1ms to be able to let OpenCV use the imshow function. IF this is avoided the imshow dont show
             // any images...
             waitKey(1);
+        }
+    }
+
+   void getSpeed(vector<vector<Point> > &_contours, int imageSizeCol, double nowTime, int _lowerLine, int _upperLine)
+   {
+        //cout << "Enter the getSpeed function" << endl;
+        double speed;
+        double tempSpeed;
+        double distY;
+        // Only look for contours with area larger than 500
+        vector<RotatedRect> minRect( _contours.size() );
+
+        for (int i = 0; i < _contours.size(); i++)
+        {
+            if (contourArea(_contours[i]) < 500)
+            {
+                continue;
+            }
+
+            if(( minRect[i].center.y < _lowerLine) or ( minRect[i].center.y > _upperLine))
+            {
+                continue;
+            }
+
+            minRect[i] = minAreaRect( Mat(_contours[i]) );
+
+            if((oldCenter.x == 0) && (oldCenter.y == 0))
+            {
+                oldCenter = minRect[i].center;
+                oldTime = nowTime;
+                cout << "DEBUG" << endl;
+                break;
+                cout << "Inside if" << endl;
+            }
+            else if ((minRect[i].center.x <= oldCenter.x + x_hys) &&
+                (minRect[i].center.x >= oldCenter.x - x_hys) &&
+                (minRect[i].center.y <= oldCenter.y + y_hysP) &&
+                (minRect[i].center.y >= oldCenter.y - y_hysM) )
+            {
+                distY = abs(GetXY(minRect[i].center.y, initialZ, focalLengthY, imageSizeCol) -
+                            GetXY(oldCenter.y, initialZ, focalLengthY, imageSizeCol));
+                oldCenter = minRect[i].center;
+
+                // Calculate the speed
+                double timeDiff = nowTime - oldTime;
+
+                cout << setprecision(15);
+//                cout << "oldTime:" << oldTime << endl;
+//                cout << "nowTime:" << nowTime << endl;
+//                cout << "timeDiff:" << timeDiff << endl;
+
+               // cout << "distY:" << distY << endl;
+
+                tempSpeed = distY / timeDiff;
+
+                medianSpeed.push_back(tempSpeed);
+
+                cout << "Median size is: " << medianSpeed.size() << endl;
+
+                if (minRect[i].center.y < _lowerLine)
+                {
+                    // Sort the vector in accending order
+                    sort(medianSpeed.begin(), medianSpeed.end());
+                    speed = medianSpeed[floor(medianSpeed.size()/2)];
+                    medianSpeed.clear();
+                    oldCenter = Point2d(0,0);
+
+                    speed_msg.speed = speed;
+                    p_pub_speed.publish(speed_msg);
+
+                   cout << "speed in function calculated to: " << speed << endl;
+                }
+
+                oldTime = nowTime;
+            }
+        }
+
+        if( (nowTime - oldTime) > 3 )
+        {
+            oldCenter = Point2d(0,0);
+            oldTime = nowTime;
+            medianSpeed.clear();
         }
     }
 
@@ -491,6 +592,12 @@ class ImageConverter
         vector<RotatedRect> minRect( _contours.size() );
         Brick tempBrick;
         bool alreadySendBool;
+
+        // Next image .... we get the speed by looking in the difference of position for each image.
+
+
+
+
 
         for (uint i = 0; i < _contours.size(); i++) // each img
         {
@@ -626,7 +733,7 @@ class ImageConverter
         return ss.str();
     }
 
-    double GetZValue(double x, double initialZ, double alignOffset)
+    double GetZValue(double x, double initialZValue, double alignOffset)
     {
         // Declare z and the offset
         double offsetZ = 0;
@@ -658,15 +765,15 @@ class ImageConverter
 
         if(offsetZ < 0)
         {
-            finalZ = offsetZ + initialZ;
+            finalZ = offsetZ + initialZValue;
         }
         else if (offsetZ == 0)
         {
-            finalZ = initialZ;
+            finalZ = initialZValue;
         }
         else
         {
-            finalZ = initialZ - offsetZ;
+            finalZ = initialZValue - offsetZ;
         }
         //cout << "z is finally: " << finalZ << endl;
         return finalZ;

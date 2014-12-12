@@ -37,12 +37,6 @@ void brickPoseCallBack(const projectName::bricks_to_robot::ConstPtr& msg)
     cout << "pitch: "   << pitch    << endl;
     cout << "yaw: "     << yaw      << endl;
 
-
-    // Receive the speed
-    double speed;
-    speed = msg->speed;
-    cout << "Speed: " << speed << endl;
-
     // Receive the ID
     string color;
     color = msg->header.frame_id;
