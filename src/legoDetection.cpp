@@ -33,7 +33,7 @@ using namespace std;
 //Below thease individual hysterese for x and y works at 20Hz of the belt.
 #define x_hys 10
 #define y_hysP 10
-#define y_hysM 20 //20 at 10 fps
+#define y_hysM 30 //20 at 10 fps
 
 #define maxMorph 20
 
@@ -194,9 +194,11 @@ class ImageConverter
 
         // Create a ROI since the
         Mat img_cropped;
-        int roi_x = 110;
+        int roi_x = 150; // We need to re-crop to 130 to detect brick at outer most left side of belt. But put some grip tape on belt.
         int roi_y = 0;
-        int roi_width = inputImage.cols-(2*roi_x);
+        int roi_width = inputImage.cols-roi_x-50;
+        //int roi_width = inputImage.cols-(2*roi_x);
+        //int roi_width = inputImage.cols-roi_x;
         //int roi_height = inputImage.rows - (2*roi_y);
         int roi_height = inputImage.rows - 100;
 
@@ -267,16 +269,18 @@ class ImageConverter
         // Note: Since the total segmentated image, img_seg is much nicer now there is really no noise pixel.
         // However the blue brick still suffer from small holes and therefore we close thoese holes by
         // use som Closing. Not Opening. Opening was more nicer to use, if we wanted to get rid of small noise pixels.
-//        Mat img_morph;
+        Mat img_morph;
+        int erode_iterations = 3;
+        int dilate_iterations = 0;
 //        createTrackbar("Erode", "Final image after morph", &erode_iterations, maxMorph);
 //        createTrackbar("Dilate", "Final image after morph", &dilate_iterations, maxMorph);
-//        img_morph = Closing(img_seg_red_yellow, erode_iterations, dilate_iterations);
+        img_morph = Opening(img_seg, erode_iterations, dilate_iterations);
 
-        //imshow("Final image after morph", img_morph);
+        imshow("Final image after morph", img_morph);
 
         // Do segmentation
         vector< vector <Point> > contours;
-        findContours(img_seg, contours, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
+        findContours(img_morph, contours, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
 
         // Center
         vector<Brick> sendBrick;
@@ -542,32 +546,32 @@ class ImageConverter
                                                     1,1,1,
                                                     1,1,1);
 
-        Mat element1 = (cv::Mat_<uchar>(3,3) <<     0,1,0,
-                                                    1,1,1,
-                                                    0,1,0);
+//        Mat element1 = (cv::Mat_<uchar>(3,3) <<     0,1,0,
+//                                                    1,1,1,
+//                                                    0,1,0);
 
-        Mat element2 = (cv::Mat_<uchar>(3,3) <<     0,1,0,
-                                                    0,1,0,
-                                                    0,1,0);
+//        Mat element2 = (cv::Mat_<uchar>(3,3) <<     0,1,0,
+//                                                    0,1,0,
+//                                                    0,1,0);
 
-        Mat element3 = (cv::Mat_<uchar>(3,3) <<     0,0,0,
-                                                    1,1,1,
-                                                    0,0,0);
+//        Mat element3 = (cv::Mat_<uchar>(3,3) <<     0,0,0,
+//                                                    1,1,1,
+//                                                    0,0,0);
 
-        Mat element4 = (cv::Mat_<uchar>(3,3) <<     1,0,0,
-                                                    0,1,0,
-                                                    0,0,1);
+//        Mat element4 = (cv::Mat_<uchar>(3,3) <<     1,0,0,
+//                                                    0,1,0,
+//                                                    0,0,1);
 
-        Mat element5 = (cv::Mat_<uchar>(3,3) <<     0,0,1,
-                                                    0,1,0,
-                                                    1,0,0);
+//        Mat element5 = (cv::Mat_<uchar>(3,3) <<     0,0,1,
+//                                                    0,1,0,
+//                                                    1,0,0);
 
-        Mat element6 = (cv::Mat_<uchar>(3,3) <<     1,0,1,
-                                                    0,1,0,
-                                                    1,0,1);
+//        Mat element6 = (cv::Mat_<uchar>(3,3) <<     1,0,1,
+//                                                    0,1,0,
+//                                                    1,0,1);
 
-        Mat element7 = (cv::Mat_<uchar>(2,2) <<     1,1,
-                                                    1,1);
+//        Mat element7 = (cv::Mat_<uchar>(2,2) <<     1,1,
+//                                                    1,1);
 
         //cout << "element is: " << "\n" <<element << endl;
         Mat morph_img;
