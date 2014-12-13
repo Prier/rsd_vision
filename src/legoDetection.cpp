@@ -423,20 +423,20 @@ class ImageConverter
                 continue;
             }
 
-            if(( minRect[i].center.y < _lowerLine) or ( minRect[i].center.y > _upperLine))
+            minRect[i] = minAreaRect( Mat(_contours[i]) );
+
+            if(( minRect[i].center.y < (_lowerLine - 20) ) or ( minRect[i].center.y > (_upperLine + 20) ))
             {
                 continue;
             }
 
-            minRect[i] = minAreaRect( Mat(_contours[i]) );
-
-            if((oldCenter.x == 0) && (oldCenter.y == 0))
+            if((oldCenter.x == 0) && (oldCenter.y == 0) && (( minRect[i].center.y > _upperLine )))
             {
                 oldCenter = minRect[i].center;
                 oldTime = nowTime;
-                cout << "DEBUG" << endl;
+                //cout << "DEBUG2" << endl;
                 break;
-                cout << "Inside if" << endl;
+                //cout << "Inside if" << endl;
             }
             else if ((minRect[i].center.x <= oldCenter.x + x_hys) &&
                 (minRect[i].center.x >= oldCenter.x - x_hys) &&
@@ -463,7 +463,7 @@ class ImageConverter
 
                 cout << "Median size is: " << medianSpeed.size() << endl;
 
-                if (minRect[i].center.y < _lowerLine)
+                if (( minRect[i].center.y < _lowerLine))
                 {
                     // Sort the vector in accending order
                     sort(medianSpeed.begin(), medianSpeed.end());
