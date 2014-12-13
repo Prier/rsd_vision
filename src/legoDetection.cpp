@@ -14,6 +14,7 @@
 #include <fstream>
 #include <stdio.h>
 #include <vector>
+#include <queue>
 
 // Used for sending the transformation matrix
 #include <geometry_msgs/Pose.h>
@@ -21,7 +22,6 @@
 
 //Our self define msg file
 #include <rsd_vision/bricks_to_robot.h>
-#include <rsd_vision/conveyor_speed.h>
 
 #define projectName rsd_vision
 #define visualize true
@@ -34,6 +34,8 @@ using namespace std;
 #define x_hys 10
 #define y_hysP 10
 #define y_hysM 30 //20 at 10 fps
+
+#define FPS 0.1 // 10 FPS
 
 #define maxMorph 20
 
@@ -112,32 +114,24 @@ int erode_iterations = 0;
 int dilate_iterations = 0;
 
 double publish_frequency = 2;
-vector<Point2d> alreadySend;
-
-
-Point2d oldCenter = Point2d(0,0);
-double oldTime;
-vector < double> medianSpeed;
-uint imgCounter = 0;
 
 //bricks_msg.speed = 7.0901871809;    // @10Hz
 //double speedSend = 7.0901871809;
 
-int redBricks = 0;
-int yellowBricks = 0;
-int blueBricks = 0;
-
-bool bricksFlag = true;
-bool imageFlag = false;
-
 struct Brick
 {
+    Brick() : speed(0) {}
     Point2d center;
     double angle;
     double height;
     double width;
     string color;
+    double speed;
+    double prevTime;
+    vector<double> brickSpeedVector;
 };
+
+vector<Brick> brickTracking;
 
 ///////////////////////////////////////////////////////////
 // Class...
@@ -150,9 +144,7 @@ class ImageConverter
     image_transport::Publisher image_pub_;
 
     projectName::bricks_to_robot bricks_msg;
-    projectName::conveyor_speed speed_msg;
     ros::Publisher p_pub;
-    ros::Publisher p_pub_speed;
 
     public:
     ImageConverter():it_(nh_)
@@ -162,6 +154,10 @@ class ImageConverter
         image_pub_ = it_.advertise("/legoDetection/output_video", 1);
         cv::namedWindow(OPENCV_WINDOW);
 
+        // Here I added the publisher so we can publish the lego pse
+        //p_pub = nh_.advertise<geometry_msgs::Pose>("lego_pose", 1);
+        p_pub = nh_.advertise<projectName::bricks_to_robot>("lego_pose", 1);
+
     }
 
     ~ImageConverter()
@@ -169,24 +165,21 @@ class ImageConverter
         cv::destroyWindow(OPENCV_WINDOW);
     }
 
+    queue<ros::Time> timeQueue;
+    queue<Mat> inputImageQueue;
     Mat inputImage;
 
     ///////////////////////////////////////////////////////////
     // My functions...
     ///////////////////////////////////////////////////////////
 
-    void imageProcessing()
+    void imageProcessing(ros::Time time)
     {
-        // Here the time is initialized...
-        ros::Time tid;
-        tid = ros::Time::now();
-
-        // Here I added the publisher so we can publish the lego pse
-        //p_pub = nh_.advertise<geometry_msgs::Pose>("lego_pose", 1);
-        p_pub = nh_.advertise<projectName::bricks_to_robot>("lego_pose", 1);;
-        p_pub_speed = nh_.advertise<projectName::conveyor_speed>("conveyor_speed", 1);
-
         ros::Rate rate(publish_frequency);
+
+        // Here the time is initialized...
+//        ros::Time tid;
+//        tid = ros::Time::now();
 
         // Resize the image
         Size size(inputImage.cols/resizeScale,inputImage.rows/resizeScale);//the dst image size,e.g.100x100
@@ -271,7 +264,7 @@ class ImageConverter
         // use som Closing. Not Opening. Opening was more nicer to use, if we wanted to get rid of small noise pixels.
         Mat img_morph;
         int erode_iterations = 3;
-        int dilate_iterations = 0;
+        int dilate_iterations = 3;
 //        createTrackbar("Erode", "Final image after morph", &erode_iterations, maxMorph);
 //        createTrackbar("Dilate", "Final image after morph", &dilate_iterations, maxMorph);
         img_morph = Opening(img_seg, erode_iterations, dilate_iterations);
@@ -303,7 +296,7 @@ class ImageConverter
         // If two LEGO bricks is touching each other, then the area is of course larger
         // This is at the moment not talking into account...
 
-        findCenterAndAngle(contours, sendBrick, showBrick, true, leftLowerPoint.y, leftUpperPoint.y);
+        findCenterAndAngle(contours, sendBrick, showBrick, true, leftLowerPoint.y, leftUpperPoint.y, time.toSec(), img_cropped.cols);
 
         // Draw the centerpoint in the image
         double x,y,roll,pitch,yaw;
@@ -326,6 +319,7 @@ class ImageConverter
             // Here we send just x,y as float64 in the msg file.
             bricks_msg.x = x;
             bricks_msg.y = y;
+            bricks_msg.speed = sendBrick[i].speed;
 
             /* Note about the z-value
               When looking at the data, which was remeassured, vally of the conveyorbelt is between
@@ -353,7 +347,7 @@ class ImageConverter
             bricks_msg.yaw = 0.0;
 
             // Set the time into bricks_msg
-            bricks_msg.header.stamp = tid;
+            bricks_msg.header.stamp = time;
 
             // Set the time into bricks_msg
             bricks_msg.header.frame_id = sendBrick[i].color;
@@ -363,14 +357,9 @@ class ImageConverter
 
             // Here we publish on the ROS topic, the pose.
             // Then we keep track of what we have sent...
-            alreadySend.push_back(sendBrick[i].center);
+            sendBrick.erase(sendBrick.begin() + i);
 
         }
-
-        // Send the speed on the topic /speed
-
-        getSpeed(contours, img_cropped.cols, tid.toSec(), leftLowerPoint.y, leftUpperPoint.y);
-
 
         if (visualize)
         {
@@ -408,88 +397,6 @@ class ImageConverter
             // Add this little wait for 1ms to be able to let OpenCV use the imshow function. IF this is avoided the imshow dont show
             // any images...
             waitKey(1);
-        }
-    }
-
-   void getSpeed(vector<vector<Point> > &_contours, int imageSizeCol, double nowTime, int _lowerLine, int _upperLine)
-   {
-        //cout << "Enter the getSpeed function" << endl;
-        double speed;
-        double tempSpeed;
-        double distY;
-        // Only look for contours with area larger than 500
-        vector<RotatedRect> minRect( _contours.size() );
-
-        for (int i = 0; i < _contours.size(); i++)
-        {
-            if (contourArea(_contours[i]) < 500)
-            {
-                continue;
-            }
-
-            minRect[i] = minAreaRect( Mat(_contours[i]) );
-
-            if(( minRect[i].center.y < (_lowerLine - 20) ) or ( minRect[i].center.y > (_upperLine + 20) ))
-            {
-                continue;
-            }
-
-            if((oldCenter.x == 0) && (oldCenter.y == 0) && (( minRect[i].center.y > _upperLine )))
-            {
-                oldCenter = minRect[i].center;
-                oldTime = nowTime;
-                //cout << "DEBUG2" << endl;
-                break;
-                //cout << "Inside if" << endl;
-            }
-            else if ((minRect[i].center.x <= oldCenter.x + x_hys) &&
-                (minRect[i].center.x >= oldCenter.x - x_hys) &&
-                (minRect[i].center.y <= oldCenter.y + y_hysP) &&
-                (minRect[i].center.y >= oldCenter.y - y_hysM) )
-            {
-                distY = abs(GetXY(minRect[i].center.y, initialZ, focalLengthY, imageSizeCol) -
-                            GetXY(oldCenter.y, initialZ, focalLengthY, imageSizeCol));
-                oldCenter = minRect[i].center;
-
-                // Calculate the speed
-                double timeDiff = nowTime - oldTime;
-
-                cout << setprecision(15);
-//                cout << "oldTime:" << oldTime << endl;
-//                cout << "nowTime:" << nowTime << endl;
-//                cout << "timeDiff:" << timeDiff << endl;
-
-               // cout << "distY:" << distY << endl;
-
-                tempSpeed = distY / timeDiff;
-
-                medianSpeed.push_back(tempSpeed);
-
-                cout << "Median size is: " << medianSpeed.size() << endl;
-
-                if (( minRect[i].center.y < _lowerLine))
-                {
-                    // Sort the vector in accending order
-                    sort(medianSpeed.begin(), medianSpeed.end());
-                    speed = medianSpeed[floor(medianSpeed.size()/2)];
-                    medianSpeed.clear();
-                    oldCenter = Point2d(0,0);
-
-                    speed_msg.speed = speed;
-                    p_pub_speed.publish(speed_msg);
-
-                   cout << "speed in function calculated to: " << speed << endl;
-                }
-
-                oldTime = nowTime;
-            }
-        }
-
-        if( (nowTime - oldTime) > 3 )
-        {
-            oldCenter = Point2d(0,0);
-            oldTime = nowTime;
-            medianSpeed.clear();
         }
     }
 
@@ -589,19 +496,17 @@ class ImageConverter
     }
 
     void findCenterAndAngle(vector<vector<Point> > &_contours,
-                            vector<Brick> &_sendBrick, vector<Brick> &_showBrick,
-                            bool _degrees, int _lowerLine, int _upperLine)
+                                vector<Brick> &_sendBrick, vector<Brick> &_showBrick,
+                                bool _degrees, int _lowerLine, int _upperLine,
+                                double nowTime, int imageSizeCol)
     {
         // minArea is setted for red to 1700. maxArea is not defined yet
         vector<RotatedRect> minRect( _contours.size() );
         Brick tempBrick;
-        bool alreadySendBool;
+        double timeDiff, tempSpeed, distY;
+        bool notTracking;
 
         // Next image .... we get the speed by looking in the difference of position for each image.
-
-
-
-
 
         for (uint i = 0; i < _contours.size(); i++) // each img
         {
@@ -682,37 +587,49 @@ class ImageConverter
                 tempBrick.angle = tempBrick.angle * M_PI / 180;
             }
 
-            alreadySendBool = false;
-            for (uint j = 0; j < alreadySend.size(); j++)
+            notTracking = true;
+            for (uint j = 0; j < brickTracking.size(); j++)
             {
-                //cout << "TempCenter is: " << tempCenter << endl;
-                if ((tempBrick.center.x <= alreadySend[j].x + x_hys) &&
-                    (tempBrick.center.x >= alreadySend[j].x - x_hys) &&
-                    (tempBrick.center.y <= alreadySend[j].y + y_hysP) &&
-                    (tempBrick.center.y >= alreadySend[j].y - y_hysM) )
+                if ((tempBrick.center.x <= brickTracking[j].center.x + x_hys) &&
+                    (tempBrick.center.x >= brickTracking[j].center.x - x_hys) &&
+                    (tempBrick.center.y <= brickTracking[j].center.y + y_hysP) &&
+                    (tempBrick.center.y >= brickTracking[j].center.y - y_hysM) )
                 {
-                    //cout << "TempCenter is the same" << endl;
-                    alreadySend[j].x = tempBrick.center.x;
-                    alreadySend[j].y = tempBrick.center.y;
+                    notTracking = false;
 
-                    //cout << "alreadySend contains: " << alreadySend << "with size: " << alreadySend.size() << endl;
-                    if ((tempBrick.center.y < _lowerLine) or (tempBrick.center.y > _upperLine))
+                    distY = abs(GetXY(tempBrick.center.y, initialZ, focalLengthY, imageSizeCol) -
+                                GetXY(brickTracking[j].center.y, initialZ, focalLengthY, imageSizeCol));
+                    timeDiff = nowTime -  brickTracking[j].prevTime;
+                    //timeDiff is not used due to problems with ros::Time
+                    tempSpeed = distY / FPS;
+                    brickTracking[j].brickSpeedVector.push_back(tempSpeed);
+                    //cout << "Tracking: " << tempSpeed << endl;
+
+                    brickTracking[j].center.x = tempBrick.center.x;
+                    brickTracking[j].center.y = tempBrick.center.y;
+                    brickTracking[j].prevTime = nowTime;
+
+                    if ((tempBrick.center.y < _lowerLine)) //or (tempBrick.center.y > _upperLine))
                     {
-                        //cout << "Now we are above or below the green lines with alreadySend vector size of: " << alreadySend.size() << endl;
-                        alreadySend.erase(alreadySend.begin() + j);
-                        //cout << "alreadySend is less now and contains: " << alreadySend << endl;
-                    }
+                        sort(brickTracking[j].brickSpeedVector.begin(), brickTracking[j].brickSpeedVector.end());
+                        brickTracking[j].speed = brickTracking[j].brickSpeedVector[floor(brickTracking[j].brickSpeedVector.size()/2)];
 
-                    alreadySendBool = true;
+                        //cout << "Stop Tracking: " << brickTracking[j].brickSpeedVector.size() << endl;
+                        //cout << "End Speed: " << brickTracking[j].speed << endl;
+                        _sendBrick.push_back(brickTracking[j]);
+                        brickTracking.erase(brickTracking.begin() + j);
+                    }
                     break;
                 }
             }
 
-            if (alreadySendBool == false)
+            if (notTracking)
             {
                 if ((tempBrick.center.y > _lowerLine) and (tempBrick.center.y < _upperLine))
                 {
-                    _sendBrick.push_back(tempBrick);
+                    //cout << "Begin Tracking!" << endl;
+                    tempBrick.prevTime = nowTime;
+                    brickTracking.push_back(tempBrick);
                 }
             }
 
@@ -816,10 +733,10 @@ class ImageConverter
         }
 
         // Store the image from the webcam into inputImage
-        inputImage = cv_ptr->image;
-        imageFlag = true;
-
-        imageProcessing();
+        Mat tempImage = cv_ptr->image;
+        inputImageQueue.push(tempImage);
+        ros::Time tempTime;
+        timeQueue.push(tempTime.now());
     }
 };
 
@@ -827,17 +744,21 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "legoDetection");
     ImageConverter ic;
-    ros::spin();
+    ros::Rate looprate(20);
+    //ros::spin();
 //NOTE Below was using 90% cpu load WHY!!!!!!!! semp solution was to image process in the callback function.
-//    while(ros::ok)
-//    {
-//        if(imageFlag)
-//        {
-//            ic.imageProcessing();
-//            imageFlag = false;
-//        }
+    while(ros::ok)
+    {
+        if(!ic.inputImageQueue.empty())
+        {
+            ic.inputImage = ic.inputImageQueue.front();
+            ic.inputImageQueue.pop();
+            ic.imageProcessing(ic.timeQueue.front());
+            ic.timeQueue.pop();
+        }
 
-//        ros::spinOnce();
-//    }
+        ros::spinOnce();
+        looprate.sleep();
+    }
     return 0;
 }
